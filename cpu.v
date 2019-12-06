@@ -8,6 +8,10 @@
 `define MEMORY_SIZE 32
 `define PC_SIZE 8
 
+`define REGISTERS_SIZE 4
+`define OPCODE_SIZE 4
+`define FUNC_SIZE 6
+
 `include "opcodes.v"    // "opcode.v" consists of "define" statements for
                         // the opcodes and function codes for all instructions
 
@@ -66,19 +70,37 @@ endmodule
 
 /////////////////////// registers ///////////////////////
 module registers (
+    input       reset_cpu,
+    input       clk,
+    input       cpu_enable,
+    input [1:0] register_selection,
+
+    input                  regw,   // RegWrite
+    input [1:0]            rreg1,  // read register 1
+    input [1:0]            rreg2,  // read register 2
+    input [1:0]            wreg,   // write register
+    input [`WORD_SIZE-1:0] wdat,   // write data
+
+    output wire [`WORD_SIZE-1:0] sdat,   // selected data
+    output wire [`WORD_SIZE-1:0] rdat1,  // read data 1
+    output wire [`WORD_SIZE-1:0] rdat2,  // read data 2
 );
-    reg [7:0] register [3:0];  // 8 bit * 4
-    always@(posedge clock) begin
-        if (/* reset phase */) begin
-            register[0] <= 0;
-            //....
+    reg [`WORD_SIZE:0] regvec [`REGISTERS_SIZE-1:0];
+
+    assign sdat = regvec[register_selection];
+    assign rdat1 = regvec[rreg1];
+    assign rdat2 = regvec[rreg2];
+
+    integer i;
+    always@(posedge clk or posedge reset_cpu) begin
+        if (reset_cpu) begin
+            for (i = 0; i < `REGISTERS_SIZE; i = i + 1) begin
+                regvec[index] <= 0;
+            end
         end
         else begin
-            if (/* read phase */) begin
-                //....
-            end
-            else if (/* write phase */) begin
-                //....
+            if (cpu_enable && regw) begin
+                regvec[regw] = wdat;
             end
         end
     end
@@ -87,22 +109,78 @@ endmodule;
 
 
 /////////////////////// control ///////////////////////
-`define JUMP     4'b0001
-`define MEM_READ 4'b0010
-
 module control (
+    input cpu_enable,
+
+    input [`OPCODE_SIZE-1:0] opcode,
+    input [`FUNC_SIZE-1:0]   func,
+
+    output reg rdst,  // RegDst
+    output reg jmp,   // Jump
+    output reg alus,  // ALUSrc
+    output reg regw,  // RegWrite
+    output reg lhi,   // LHI
+    output reg wwd    // WWD
 );
 
+    initial begin
+        rdst = 0;
+        jmp = 0;
+        alus = 0;
+        regw = 0;
+        lhi = 0;
+        wwd = 0;
+    end
+
     always@(*) begin
-        case (control_state)
-        `JUMP: begin
-            ///////////
+        if (cpu_enable) begin
+            case (opcode)
+                4'd15: begin
+                    case (func)
+                        `FUNC_ADD: begin
+                            rdst = 1;
+                            jmp = 0;
+                            alus = 0;
+                            regw = 1;
+                            lhi = 0;
+                            wwd = 0;
+                        end
+                        `FUNC_WWD: begin
+                            rdst = 0;
+                            jmp = 0;
+                            alus = 0;
+                            regw = 0;
+                            lhi = 0;
+                            wwd = 1;
+                        end
+                    endcase
+                end
+                `OPCODE_ADI: begin
+                    rdst = 0;
+                    jmp = 0;
+                    alus = 1;
+                    regw = 1;
+                    lhi = 0;
+                    wwd = 1;
+                end
+                `OPCODE_LHI: begin
+                    rdst = 0;
+                    jmp = 0;
+                    alus = 0;
+                    regw = 1;
+                    lhi = 1;
+                    wwd = 0;
+                end
+                `OPCODE_JMP: begin
+                    rdst = 0;
+                    jmp = 1;
+                    alus = 0;
+                    regw = 0;
+                    lhi = 0;
+                    wwd = 0;
+                end
+            endcase
         end
-        `MEM_READ: begin
-            ///////////
-        end
-        ///////////
-        endcase
     end
 endmodule;
 ///////////////////////////////////////////////////////
