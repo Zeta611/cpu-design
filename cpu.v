@@ -7,11 +7,12 @@
 `define WORD_SIZE 16    // data and address word size
 `define MEMORY_SIZE 32
 `define PC_SIZE 8
-// INCLUDE files
+
 `include "opcodes.v"    // "opcode.v" consists of "define" statements for
                         // the opcodes and function codes for all instructions
 
-// MODULE DECLARATION
+
+/////////////////////// cpu ///////////////////////
 module cpu (
     input reset_cpu,    // reset signal for CPU. active-high(reset at 1)
     input clk,          // clock signal
@@ -24,7 +25,7 @@ module cpu (
     output [`WORD_SIZE-1:0] output_port,   // this will be used to show values in registers in case of WWD or register_selection
     output [7:0] PC_below8bit              // lower 8-bit of PC for LED output on output_logic.v. You need to assign lower 8bit of current PC to this port
 );
-///////////////////////////////instruction memory//////////////////////////////////
+/////////////////////// instruction memory ///////////////////////
 // Do not touch this part. Otherwise, your CPU will not work properly according to the tsc-ISA
     reg [`WORD_SIZE-1:0] memory [0:`MEMORY_SIZE-1]; //memory where instruction is saved
     always@(reset_cpu) begin
@@ -59,5 +60,65 @@ module cpu (
             memory[27] <= 16'hfc1c;    // WWD $3
         end
     end
-//////////////////////////////////////////////////////////////////////////
 endmodule
+///////////////////////////////////////////////////
+
+
+/////////////////////// registers ///////////////////////
+module registers (
+);
+    reg [7:0] register [3:0];  // 8 bit * 4
+    always@(posedge clock) begin
+        if (/* reset phase */) begin
+            register[0] <= 0;
+            //....
+        end
+        else begin
+            if (/* read phase */) begin
+                //....
+            end
+            else if (/* write phase */) begin
+                //....
+            end
+        end
+    end
+endmodule;
+/////////////////////////////////////////////////////////
+
+
+/////////////////////// control ///////////////////////
+`define JUMP     4'b0001
+`define MEM_READ 4'b0010
+
+module control (
+);
+
+    always@(*) begin
+        case (control_state)
+        `JUMP: begin
+            ///////////
+        end
+        `MEM_READ: begin
+            ///////////
+        end
+        ///////////
+        endcase
+    end
+endmodule;
+///////////////////////////////////////////////////////
+
+
+/////////////////////// alu ///////////////////////
+module alu (
+);
+
+endmodule;
+///////////////////////////////////////////////////
+
+
+/////////////////////// sign_extend ///////////////////////
+module sign_extend (
+);
+
+endmodule;
+///////////////////////////////////////////////////////////
