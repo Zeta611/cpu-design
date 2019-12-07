@@ -188,15 +188,22 @@ endmodule;
 
 /////////////////////// alu ///////////////////////
 module alu (
+    input [`WORD_SIZE-1:0] dat1,
+    input [`WORD_SIZE-1:0] dat2,
+    output wire [`WORD_SIZE-1:0] res,
 );
-
+    assign res = dat1 + dat2;
 endmodule;
 ///////////////////////////////////////////////////
 
 
 /////////////////////// sign_extend ///////////////////////
 module sign_extend (
+    input [`IMM_SIZE-1:0] imm,
+    output wire [`WORD_SIZE-1:0] ext
 );
-
+    // `WORD_SIZE - `IMM_SIZE == 8
+    assign ext = imm[`IMM_SIZE-1] ?
+        {8'b11111111, imm[`IMM_SIZE-1:0]} : {8'b0, imm[`IMM_SIZE-1:0]}
 endmodule;
 ///////////////////////////////////////////////////////////
