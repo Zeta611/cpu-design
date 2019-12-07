@@ -6,11 +6,12 @@
 // DEFINITIONS do not touch definition and
 `define WORD_SIZE 16    // data and address word size
 `define MEMORY_SIZE 32
-`define PC_SIZE 8
 
-`define REGISTERS_SIZE 4
+`define REGS_SIZE 4
 `define OPCODE_SIZE 4
 `define FUNC_SIZE 6
+`define IMM_SIZE 8
+`define TARGET_SIZE 12
 
 `include "opcodes.v"    // "opcode.v" consists of "define" statements for
                         // the opcodes and function codes for all instructions
@@ -64,6 +65,127 @@ module cpu (
             memory[27] <= 16'hfc1c;    // WWD $3
         end
     end
+
+    // PC initialization
+    reg [`WORD_SIZE:0] pc;
+    initial begin
+        pc <= 16'b0;
+    end
+    assign PC_below8bit = pc[7:0];
+
+    // Instruction from memory[pc]
+    wire [15:0] inst;
+    assign inst = address[pc];
+
+    // control
+    // Input wires for control
+    wire [3:0] opcode;
+    wire [5:0] func;
+    // Output wires for control
+    wire rdst, jmp, alus, lhi, wwd;
+
+    assign opcode = inst[15:12];
+    assign func = inst[5:0];
+
+    // register
+    // Input wires for registers
+    wire       regw;
+    wire [1:0] rreg1;
+    wire [1:0] rreg2;
+    wire [1:0] wreg;
+    wire [15:0] wdat;
+    // Output wires for registers
+    wire [15:0] sdat;
+    wire [15:0] rdat1;
+    wire [15:0] rdat2;
+
+    assign rreg1 = inst[11:10];
+    assign rreg2 = inst[9:8];
+    assign wreg = rdst ? inst[7:6] : inst[9:8];
+
+    assign output_port = sdat;
+
+    // sign_extend
+    // Input wires for sign_extend
+    wire [7:0] imm;
+    // Output wires for sign_extend
+    wire [15:0] ext;
+
+    assign imm = inst[7:0];
+
+    // alu
+    // Input wires for alu
+    wire [15:0] mux_rdat2;
+    // Output wires for alu
+    wire [15:0] alu_res;
+
+    assign mux_rdat2 = alus ? ext : rdat2;
+
+    wire [15:0] ext_imm;
+    assign ext_imm = {imm[7:0], 8'b0};
+
+    assign wdat = lhi ? ext_imm : alu_res;
+
+    // PC incremented by 1
+    wire [`WORD_SIZE-1:0] ipc;
+    assign ipc = pc + 1;
+
+    wire [`TARGET_SIZE-1:0] taddr;
+    assign taddr = inst[11:0];
+
+    // Address to jump
+    wire [`WORD_SIZE-1:0] jres;
+
+    always@(posedge clk) begin
+        pc <= jmp ? jres : ipc;
+    end
+
+    control cont(
+        cpu_enable,
+        opcode,
+        func,
+
+        rdst,  // RegDst
+        jmp,   // Jump
+        alus,  // ALUSrc
+        regw,  // RegWrite
+        lhi,   // LHI 
+        wwd    // WWD
+    );
+
+    regis†ers regi(
+        reset_cpu,
+        clk,
+        cpu_enable,
+        register_selection,
+        wwd_enable,
+
+        regw,   // RegWrite
+        rreg1,  // read register 1
+        rreg2,  // read register 2
+        wreg,   // write register
+        wdat,   // write data
+
+        sdat,   // selected data
+        rdat1,  // read data 1
+        rdat2   // read data 2
+    );
+    sign_extend sign(
+        imm,
+        ext
+    )
+
+    concat conc(
+        ipc,
+        taddr,
+        jres
+    )
+
+    alu arith(
+        rdat1,
+        mux_rdat2,
+        alu_res
+    )
 endmodule
 ///////////////////////////////////////////////////
 
@@ -74,27 +196,32 @@ module registers (
     input       clk,
     input       cpu_enable,
     input [1:0] register_selection,
+    input       wwd_enable,
 
+    input                  wwd,    // WWD
     input                  regw,   // RegWrite
     input [1:0]            rreg1,  // read register 1
     input [1:0]            rreg2,  // read register 2
     input [1:0]            wreg,   // write register
     input [`WORD_SIZE-1:0] wdat,   // write data
 
-    output wire [`WORD_SIZE-1:0] sdat,   // selected data
+    output reg  [`WORD_SIZE-1:0] sdat,   // selected data
     output wire [`WORD_SIZE-1:0] rdat1,  // read data 1
-    output wire [`WORD_SIZE-1:0] rdat2,  // read data 2
+    output wire [`WORD_SIZE-1:0] rdat2  // read data 2
 );
-    reg [`WORD_SIZE:0] regvec [`REGISTERS_SIZE-1:0];
+    reg [`WORD_SIZE-1:0] regvec [`REGS_SIZE-1:0];
 
-    assign sdat = regvec[register_selection];
     assign rdat1 = regvec[rreg1];
     assign rdat2 = regvec[rreg2];
+
+    initial begin
+        sdat = 16'd0;
+    end
 
     integer i;
     always@(posedge clk or posedge reset_cpu) begin
         if (reset_cpu) begin
-            for (i = 0; i < `REGISTERS_SIZE; i = i + 1) begin
+            for (i = 0; i < `REGS_SIZE; i = i + 1) begin
                 regvec[index] <= 0;
             end
         end
@@ -102,7 +229,15 @@ module registers (
             if (cpu_enable && regw) begin
                 regvec[regw] = wdat;
             end
+            if (cpu_enable && wwd) begin
+                sdat <= wwd_enable ?
+                    regvec[register_selection] : regvec[rreg1];
+            end
         end
+    end
+
+    always@(posedge wwd_enable) begin
+        sdat <= wwd_enable ? regvec[register_selection] : regvec[rreg1];
     end
 endmodule;
 /////////////////////////////////////////////////////////
@@ -119,65 +254,65 @@ module control (
     output reg jmp,   // Jump
     output reg alus,  // ALUSrc
     output reg regw,  // RegWrite
-    output reg lhi,   // LHI
+    output reg lhi,   // LHI 
     output reg wwd    // WWD
 );
 
     initial begin
-        rdst = 0;
-        jmp = 0;
-        alus = 0;
-        regw = 0;
-        lhi = 0;
-        wwd = 0;
+        rdst <= 0;
+        jmp <= 0;
+        alus <= 0;
+        regw <= 0;
+        lhi <= 0;
+        wwd <= 0;
     end
 
     always@(*) begin
         if (cpu_enable) begin
             case (opcode)
-                4'd15: begin
+                4'd15: begin //?
                     case (func)
                         `FUNC_ADD: begin
-                            rdst = 1;
-                            jmp = 0;
-                            alus = 0;
-                            regw = 1;
-                            lhi = 0;
-                            wwd = 0;
+                            rdst <= 1;
+                            jmp <= 0;
+                            alus <= 0;
+                            regw <= 1;
+                            lhi <= 0;
+                            wwd <= 0;
                         end
                         `FUNC_WWD: begin
-                            rdst = 0;
-                            jmp = 0;
-                            alus = 0;
-                            regw = 0;
-                            lhi = 0;
-                            wwd = 1;
+                            rdst <= 0;
+                            jmp <= 0;
+                            alus <= 0;
+                            regw <= 0;
+                            lhi <= 0;
+                            wwd <= 1;
                         end
                     endcase
                 end
                 `OPCODE_ADI: begin
-                    rdst = 0;
-                    jmp = 0;
-                    alus = 1;
-                    regw = 1;
-                    lhi = 0;
-                    wwd = 1;
+                    rdst <= 0;
+                    jmp <= 0;
+                    alus <= 1;
+                    regw <= 1;
+                    lhi <= 0;
+                    wwd <= 0;
                 end
                 `OPCODE_LHI: begin
-                    rdst = 0;
-                    jmp = 0;
-                    alus = 0;
-                    regw = 1;
-                    lhi = 1;
-                    wwd = 0;
+                    rdst <= 0;
+                    jmp <= 0;
+                    alus <= 0;
+                    regw <= 1;
+                    lhi <= 1;
+                    wwd <= 0;
                 end
                 `OPCODE_JMP: begin
-                    rdst = 0;
-                    jmp = 1;
-                    alus = 0;
-                    regw = 0;
-                    lhi = 0;
-                    wwd = 0;
+                    rdst <= 0;
+                    jmp <= 1;
+                    alus <= 0;
+                    regw <= 0;
+                    lhi <= 0;
+                    wwd <= 0;
                 end
             endcase
         end
@@ -205,5 +340,17 @@ module sign_extend (
     // `WORD_SIZE - `IMM_SIZE == 8
     assign ext = imm[`IMM_SIZE-1] ?
         {8'b11111111, imm[`IMM_SIZE-1:0]} : {8'b0, imm[`IMM_SIZE-1:0]}
+endmodule;
+///////////////////////////////////////////////////////////
+
+
+/////////////////////// concat ///////////////////////
+module concat (
+    input [`WORD_SIZE-1:0]     pc,
+    input [`TARGET_SIZE-1:0] taddr,
+    output wire [`WORD_SIZE-1:0] res,
+);
+    // `WORD_SIZE - `TARGET_SIZE == 4
+    assign res = {pc[`WORD_SIZE-1:`WORD_SIZE-2], taddr, 2'b0};
 endmodule;
 ///////////////////////////////////////////////////////////
