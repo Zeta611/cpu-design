@@ -25,7 +25,7 @@ module cpu (
     input wwd_enable,   // enables wwd. if unasserted then wwd operation
                         // should not assign register value to output_port
     input [1:0] register_selection, // selects which register to show on output_port. It should only work when wwd is disabled
-    output reg[`WORD_SIZE-1:0] num_inst,   // number of instruction during execution. !!!!!!! IMPORTANT!!! DISABLE!! this port when programming FPGA
+    // output reg[`WORD_SIZE-1:0] num_inst,   // number of instruction during execution. !!!!!!! IMPORTANT!!! DISABLE!! this port when programming FPGA
                         // You should enable num_inst port only for SIMULATION purposes.
     output [`WORD_SIZE-1:0] output_port,   // this will be used to show values in registers in case of WWD or register_selection
     output [7:0] PC_below8bit              // lower 8-bit of PC for LED output on output_logic.v. You need to assign lower 8bit of current PC to this port
@@ -75,7 +75,7 @@ module cpu (
 
     // Instruction from memory[pc]
     wire [15:0] inst;
-    assign inst = address[pc];
+    assign inst = memory[pc];
 
     // control
     // Input wires for control
@@ -153,13 +153,14 @@ module cpu (
         wwd    // WWD
     );
 
-    regis†ers regi(
+    registers regi(
         reset_cpu,
         clk,
         cpu_enable,
         register_selection,
         wwd_enable,
 
+        wwd,    // WWD
         regw,   // RegWrite
         rreg1,  // read register 1
         rreg2,  // read register 2
@@ -170,22 +171,23 @@ module cpu (
         rdat1,  // read data 1
         rdat2   // read data 2
     );
+
     sign_extend sign(
         imm,
         ext
-    )
+    );
 
     concat conc(
         ipc,
         taddr,
         jres
-    )
+    );
 
     alu arith(
         rdat1,
         mux_rdat2,
         alu_res
-    )
+    );
 endmodule
 ///////////////////////////////////////////////////
 
@@ -222,7 +224,7 @@ module registers (
     always@(posedge clk or posedge reset_cpu) begin
         if (reset_cpu) begin
             for (i = 0; i < `REGS_SIZE; i = i + 1) begin
-                regvec[index] <= 0;
+                regvec[i] <= 0;
             end
         end
         else begin
@@ -239,7 +241,7 @@ module registers (
     always@(posedge wwd_enable) begin
         sdat <= wwd_enable ? regvec[register_selection] : regvec[rreg1];
     end
-endmodule;
+endmodule
 /////////////////////////////////////////////////////////
 
 
@@ -317,7 +319,7 @@ module control (
             endcase
         end
     end
-endmodule;
+endmodule
 ///////////////////////////////////////////////////////
 
 
@@ -325,10 +327,10 @@ endmodule;
 module alu (
     input [`WORD_SIZE-1:0] dat1,
     input [`WORD_SIZE-1:0] dat2,
-    output wire [`WORD_SIZE-1:0] res,
+    output wire [`WORD_SIZE-1:0] res
 );
     assign res = dat1 + dat2;
-endmodule;
+endmodule
 ///////////////////////////////////////////////////
 
 
@@ -339,8 +341,8 @@ module sign_extend (
 );
     // `WORD_SIZE - `IMM_SIZE == 8
     assign ext = imm[`IMM_SIZE-1] ?
-        {8'b11111111, imm[`IMM_SIZE-1:0]} : {8'b0, imm[`IMM_SIZE-1:0]}
-endmodule;
+        {8'b11111111, imm[`IMM_SIZE-1:0]} : {8'b0, imm[`IMM_SIZE-1:0]};
+endmodule
 ///////////////////////////////////////////////////////////
 
 
@@ -348,9 +350,9 @@ endmodule;
 module concat (
     input [`WORD_SIZE-1:0]     pc,
     input [`TARGET_SIZE-1:0] taddr,
-    output wire [`WORD_SIZE-1:0] res,
+    output wire [`WORD_SIZE-1:0] res
 );
     // `WORD_SIZE - `TARGET_SIZE == 4
     assign res = {pc[`WORD_SIZE-1:`WORD_SIZE-2], taddr, 2'b0};
-endmodule;
+endmodule
 ///////////////////////////////////////////////////////////
