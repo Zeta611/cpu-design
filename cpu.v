@@ -207,18 +207,22 @@ module registers (
     input [1:0]            wreg,   // write register
     input [`WORD_SIZE-1:0] wdat,   // write data
 
-    output reg  [`WORD_SIZE-1:0] sdat,   // selected data
+    output wire [`WORD_SIZE-1:0] sdat,   // selected data
     output wire [`WORD_SIZE-1:0] rdat1,  // read data 1
-    output wire [`WORD_SIZE-1:0] rdat2  // read data 2
+    output wire [`WORD_SIZE-1:0] rdat2   // read data 2
 );
     reg [`WORD_SIZE-1:0] regvec [`REGS_SIZE-1:0];
 
     assign rdat1 = regvec[rreg1];
     assign rdat2 = regvec[rreg2];
+    
+    reg [`WORD_SIZE-1:0] cache_sdat;
 
     initial begin
-        sdat = 16'd0;
+        cache_sdat = 16'd0;
     end
+    
+    assign sdat = wwd_enable ? cache_sdat : regvec[rreg1];
 
     integer i;
     always@(posedge clk or posedge reset_cpu) begin
@@ -229,17 +233,12 @@ module registers (
         end
         else begin
             if (cpu_enable && regw) begin
-                regvec[regw] = wdat;
+                regvec[regw] <= wdat;
             end
-            if (cpu_enable && wwd) begin
-                sdat <= wwd_enable ?
-                    regvec[register_selection] : regvec[rreg1];
+            if (wwd) begin
+                cache_sdat <= regvec[register_selection];
             end
         end
-    end
-
-    always@(posedge wwd_enable) begin
-        sdat <= wwd_enable ? regvec[register_selection] : regvec[rreg1];
     end
 endmodule
 /////////////////////////////////////////////////////////
