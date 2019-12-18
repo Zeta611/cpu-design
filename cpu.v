@@ -142,12 +142,13 @@ module cpu (
         end
         else if (cpu_enable) begin
             pc <= jmp ? jres : ipc;
-        end
-        if (wwd) begin
-            cache_rdat1 <= rdat1;
+            if (wwd) begin
+                cache_rdat1 <= rdat1;
+            end
         end
     end
-    assign output_port = wwd_enable ? (wwd ? rdat1 : cache_rdat1) : sdat;
+
+    assign output_port = wwd_enable ? cache_rdat1 : sdat;
 
     control cont(
         cpu_enable,
